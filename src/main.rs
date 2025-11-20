@@ -7,20 +7,24 @@ fn find_config(target_file: &str) -> Result<String, Error> {
         if let None = parent {
             break;
         }
-        let entries = parent.unwrap().read_dir()?;
+        let parent = parent.ok_or(Error::new(
+            std::io::ErrorKind::NotFound,
+            "Parent directory not found",
+        ))?;
+        let entries = parent.read_dir()?;
         for entry_result in entries {
             let entry = entry_result?;
             if entry.file_name() == "offsets.conf" {
                 return Ok(entry.path().to_string_lossy().to_string());
             }
         }
-        path = parent.unwrap().to_path_buf();
+        path = parent.to_path_buf();
     }
 
-    return Err(Error::new(
+    Err(Error::new(
         std::io::ErrorKind::NotFound,
         "Config file not found",
-    ));
+    ))
 }
 
 fn get_config_for(config_file: &str, target_file: &str) -> Result<String, Error> {
@@ -28,24 +32,21 @@ fn get_config_for(config_file: &str, target_file: &str) -> Result<String, Error>
 
     let filepath = path::absolute(target_file)?;
 
-    let filename = filepath.file_name();
-    if let None = filename {
-        return Err(Error::new(
-            std::io::ErrorKind::Other,
-            "Failed to get filename",
-        ));
-    }
+    let filename = filepath.file_name().ok_or(Error::new(
+        std::io::ErrorKind::Other,
+        "Failed to get filename",
+    ))?;
 
     for config in configs.lines() {
-        if config.starts_with(filename.unwrap().to_string_lossy().to_string().as_str()) {
+        if config.starts_with(filename.to_string_lossy().to_string().as_str()) {
             return Ok(config.to_owned());
         }
     }
 
-    return Ok("No config available for file".to_owned());
+    Ok("No config available for file".to_owned())
 }
 
-fn main() {
+fn main() -> Result<(), Error> {
     let full_args: Vec<String> = env::args().collect();
     if full_args.len() <= 1 {
         println!("No file given");
@@ -82,20 +83,13 @@ fn main() {
         exit(1);
     }
 
-    let config_path = find_config(target_file);
-    if let Err(err) = config_path {
-        println!("Error: {}", err);
-        exit(1);
-    }
+    let config_path = find_config(target_file)?;
+    let config = get_config_for(config_path.as_ref(), target_file)?;
 
-    let config = get_config_for(config_path.as_ref().unwrap(), target_file);
-    if let Err(err) = config {
-        println!("Error: {}", err);
-        exit(1);
-    }
-
-    println!("Config: {}", config_path.unwrap());
-    println!("Val: {}", config.unwrap());
+    println!("Config: {}", config_path);
+    println!("Val: {}", config);
 
     println!("{} -> {}", target_file, output_folder);
+
+    Ok(())
 }
